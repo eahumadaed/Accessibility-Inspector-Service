@@ -17,24 +17,20 @@
 package com.google.android.accessibility.utils;
 
 import android.content.Context;
-import android.content.res.Resources;
 import android.graphics.Rect;
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat;
 import android.text.TextUtils;
 import android.util.DisplayMetrics;
 import android.util.Log;
-import android.util.TypedValue;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.accessibility.AccessibilityWindowInfo;
 import com.google.android.accessibility.utils.traversal.OrderedTraversalStrategy;
 import com.jwlilly.accessibilityinspector.AccessibilityInspector;
-
 import java.text.DecimalFormat;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Random;
-
 import org.checkerframework.checker.nullness.qual.Nullable;
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -393,7 +389,9 @@ public class TreeDebug {
       JSONObject metadata = new JSONObject();
       jsonObject.put("id", rand.nextInt());
       metadata.put("hashCode", node.hashCode());
-      //jsonObject.put("resourceId", node.getViewIdResourceName());
+      if (node.getViewIdResourceName() != null) {
+        metadata.put("resourceId", node.getViewIdResourceName());
+      }
       if (node.getClassName() != null) {
         if (node.getRoleDescription() != null) {
           metadata.put("roleDescription", node.getRoleDescription());

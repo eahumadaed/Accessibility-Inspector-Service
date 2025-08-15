@@ -1,9 +1,10 @@
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     android:description="@string/accessibility_service_description"
     android:accessibilityEventTypes="typeAllMask"
-    android:accessibilityFlags="flagRetrieveInteractiveWindows"
+    android:accessibilityFlags="flagRetrieveInteractiveWindows|flagReportViewIds"
     android:accessibilityFeedbackType="feedbackSpoken"
     android:notificationTimeout="1000"
     android:isAccessibilityTool="true"
     android:canRetrieveWindowContent="true"
-    />
+    tools:ignore="UnusedAttribute" />
