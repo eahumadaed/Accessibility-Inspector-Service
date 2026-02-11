@@ -6,23 +6,18 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.graphics.Bitmap;
 import android.os.Build;
-import android.os.Environment;
-import android.util.Base64;
 import android.util.Log;
-import android.view.Display;
 import android.view.accessibility.AccessibilityEvent;
+import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.accessibility.AccessibilityWindowInfo;
-
 import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
+import androidx.core.view.accessibility.AccessibilityNodeInfoCompat;
+
 import com.google.android.accessibility.utils.TreeDebug;
 import org.json.JSONObject;
-
 import java.io.ByteArrayOutputStream;
-import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.List;
 import java.util.Observable;
@@ -32,15 +27,20 @@ import java.util.zip.GZIPOutputStream;
 
 
 public class AccessibilityInspector extends AccessibilityService implements Observer {
-    private String LOG_TAG = "AccessibilityInspector";
+    private final String LOG_TAG = "AccessibilityInspector";
     private AccessibilityListener captureListener;
 
     private AccessibilityListener importantListener;
     public AccessibilityInspector _this = this;
     private JSONObject jsonObject;
-    private String screenshot = "";
-    private long eventTime = 0;
-    private int eventTimeout = 1000;
+
+
+    private final int allFlags = AccessibilityServiceInfo.DEFAULT
+        | AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
+        | AccessibilityServiceInfo.FEEDBACK_GENERIC
+        | AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS
+        | AccessibilityServiceInfo.CAPABILITY_CAN_RETRIEVE_WINDOW_CONTENT
+        | AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS;
 
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
@@ -52,6 +52,22 @@ public class AccessibilityInspector extends AccessibilityService implements Obse
                 }
             }
         }
+//        if(event.getEventType() == AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED) {
+//            try {
+//                AccessibilityNodeInfo info = event.getSource();
+//                boolean systemWindow = event.getPackageName().toString().contains(".android");
+//                if (!systemWindow && info != null && info.getWindow().isActive() && info.getParent() != null) {
+//                    do {
+//                        info = info.getParent();
+//                        Log.d("TAG", info.toString());
+//                    } while (info.getParent() != null);
+//                    lastKnown = info;
+//                }
+//            } catch (Exception e) {
+//                Log.d("AccessibilityInspector", "null parent");
+//            }
+//
+//        }
     }
 
     @Override
@@ -79,10 +95,13 @@ public class AccessibilityInspector extends AccessibilityService implements Obse
                 | AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
                 | AccessibilityServiceInfo.FEEDBACK_GENERIC
                 | AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS
-                | AccessibilityServiceInfo.CAPABILITY_CAN_TAKE_SCREENSHOT
                 | AccessibilityServiceInfo.CAPABILITY_CAN_RETRIEVE_WINDOW_CONTENT;
         info.eventTypes = AccessibilityEvent.TYPE_ANNOUNCEMENT;
         this.setServiceInfo(info);
+    }
+
+    public Context getContext() {
+        return this.getApplicationContext();
     }
 
     @Override
@@ -102,9 +121,10 @@ public class AccessibilityInspector extends AccessibilityService implements Obse
         @Override
         public void onReceive(Context context, Intent intent) {
             if(intent.getAction().equalsIgnoreCase("A11yInspector")) {
+                hideNotImportant();
                 startCapture();
             } else if(intent.getAction().equalsIgnoreCase("A11yInspectorImportant")) {
-                toggleShowNotImportant();
+                showNotImportant();
                 startCapture();
             }
         }
@@ -116,57 +136,40 @@ public class AccessibilityInspector extends AccessibilityService implements Obse
     public void sendJSON(JSONObject object) {
         jsonObject = object;
     }
-    public void sendWithoutScreenshot() {
+
+    public void hideNotImportant() {
+        int flags = this.getServiceInfo().flags;
+        AccessibilityServiceInfo info = this.getServiceInfo();
+
+        if (flags == allFlags) {
+            info.flags = AccessibilityServiceInfo.DEFAULT
+                    | AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
+                    | AccessibilityServiceInfo.FEEDBACK_GENERIC
+                    | AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS
+                    | AccessibilityServiceInfo.CAPABILITY_CAN_RETRIEVE_WINDOW_CONTENT;
+            this.setServiceInfo(info);
+        }
+    }
+
+    public void showNotImportant() {
+        int flags = this.getServiceInfo().flags;
+        if (flags != allFlags) {
+            AccessibilityServiceInfo info = this.getServiceInfo();
+            info.flags = allFlags;
+            this.setServiceInfo(info);
+        }
+
+    }
+
+    public void sendTree() {
         try {
+            jsonObject.put("name", "");
             Intent announcementIntent = new Intent(SocketService.BROADCAST_MESSAGE, null, this, SocketService.class);
             SocketService.data = compress(jsonObject.toString());
             startService(announcementIntent);
             Log.d(LOG_TAG, "message sent");
         } catch (Exception e) {
             Log.e(LOG_TAG,e.getMessage());
-        }
-    }
-
-    public void toggleShowNotImportant() {
-        int flags = this.getServiceInfo().flags;
-        int allFlags = AccessibilityServiceInfo.DEFAULT
-                | AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
-                | AccessibilityServiceInfo.FEEDBACK_GENERIC
-                | AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS
-                | AccessibilityServiceInfo.CAPABILITY_CAN_TAKE_SCREENSHOT
-                | AccessibilityServiceInfo.CAPABILITY_CAN_RETRIEVE_WINDOW_CONTENT
-                | AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS;
-
-        if(flags == allFlags) {
-            AccessibilityServiceInfo info = this.getServiceInfo();
-            info.flags = AccessibilityServiceInfo.DEFAULT
-                    | AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
-                    | AccessibilityServiceInfo.FEEDBACK_GENERIC
-                    | AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS
-                    | AccessibilityServiceInfo.CAPABILITY_CAN_TAKE_SCREENSHOT
-                    | AccessibilityServiceInfo.CAPABILITY_CAN_RETRIEVE_WINDOW_CONTENT;
-            this.setServiceInfo(info);
-            Log.d("INSPECTOR", "hide not important views");
-        } else {
-            AccessibilityServiceInfo info = this.getServiceInfo();
-            info.flags = allFlags;
-            this.setServiceInfo(info);
-            Log.d("INSPECTOR", "show not important views");
-        }
-    }
-    public void sendWithScreenshot() {
-        try {
-            JSONObject combinedJson = new JSONObject();
-            //combinedJson.put("screenshot", screenshot);
-            combinedJson.putOpt("views", jsonObject);
-            Intent announcementIntent = new Intent(SocketService.BROADCAST_MESSAGE, null, this, SocketService.class);
-            SocketService.data = compress(combinedJson.toString());
-            startService(announcementIntent);
-            Log.d(LOG_TAG, "message sent");
-            screenshot = "";
-        } catch (Exception e) {
-            Log.e(LOG_TAG,e.getMessage());
-            screenshot = "";
         }
     }
     public void sendAnnouncement(String announcement) {
@@ -186,29 +189,7 @@ public class AccessibilityInspector extends AccessibilityService implements Obse
         List<AccessibilityWindowInfo> windows = getWindows();
 
         TreeDebug.logNodeTrees(windows, _this);
-        sendWithScreenshot();
-//        takeScreenshot(Display.DEFAULT_DISPLAY,
-//                getApplicationContext().getMainExecutor(), new TakeScreenshotCallback() {
-//                    @RequiresApi(api = Build.VERSION_CODES.R)
-//                    @Override
-//                    public void onSuccess(@NonNull ScreenshotResult screenshotResult) {
-//
-//                        Log.i("ScreenShotResult","onSuccess");
-//                        Bitmap bitmap = Bitmap.wrapHardwareBuffer(screenshotResult.getHardwareBuffer(),screenshotResult.getColorSpace());
-//                        ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
-//                        bitmap.compress(Bitmap.CompressFormat.PNG, 50, byteArrayOutputStream);
-//                        byte[] byteArray = byteArrayOutputStream.toByteArray();
-//                        String encoded = Base64.encodeToString(byteArray, Base64.NO_WRAP);
-//                        screenshot = encoded;
-//                        sendWithScreenshot();
-//                    }
-//
-//                    @Override
-//                    public void onFailure(int i) {
-//                        Log.i("ScreenShotResult","onFailure code is "+ i);
-//                        sendWithoutScreenshot();
-//                    }
-//                });
+        sendTree();
     }
 
     public static byte[] compress(String string) throws IOException {
